@@ -19,6 +19,16 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(morgan("tiny"));
 
+// simple root endpoint for quick checks
+app.get("/", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "GuideHub API",
+    docs: "/api",
+    note: "API is up — visit /health or /api/guides/top",
+  });
+});
+
 // routes
 app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
