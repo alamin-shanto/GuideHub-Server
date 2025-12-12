@@ -1,8 +1,9 @@
 import dotenv from "dotenv";
 dotenv.config();
-import app from "./app";
+
 import connectDB from "./config/db";
 import logger from "./utils/logger";
+import app from "./app";
 
 const PORT = process.env.PORT || 4000;
 
@@ -13,7 +14,8 @@ async function start() {
       logger.info(`Server running on port ${PORT}`);
     });
   } catch (err) {
-    logger.error("Failed to start server", err);
+    // Pass the error object as structured data so pino/other loggers can serialize it
+    logger.error({ err }, "Failed to start server");
     process.exit(1);
   }
 }
