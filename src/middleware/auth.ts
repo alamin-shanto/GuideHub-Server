@@ -1,26 +1,51 @@
+// src/middleware/auth.ts
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import { verifyToken } from "../utils/jwt";
 import User from "../models/User.model";
 
+/**
+ * protect middleware
+ * - Accepts token from cookie (priority) or Authorization header ("Bearer <token>")
+ * - Verifies token and attaches user (without password) to req.user
+ */
 export const protect = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  let token = req.headers.authorization?.startsWith("Bearer ")
-    ? req.headers.authorization!.split(" ")[1]
-    : undefined;
-  if (!token) return res.status(401).json({ message: "Not authorized" });
-
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || "") as {
-      id: string;
-    };
-    const user = await User.findById(payload.id).select("-password");
-    if (!user) return res.status(401).json({ message: "User not found" });
-    req.user = user;
+    // get token from cookie first, then Authorization header
+    const cookieToken = (req as any).cookies?.token || req.cookies?.token;
+    const header = req.headers.authorization;
+    const headerToken =
+      header && header.startsWith("Bearer ") ? header.split(" ")[1] : undefined;
+
+    const token = cookieToken || headerToken;
+    if (!token) {
+      return res.status(401).json({ message: "Not authorized" });
+    }
+
+    // verifyToken should throw if invalid/expired
+    const payload = verifyToken(token) as { id?: string } | undefined;
+    if (!payload?.id) {
+      return res.status(401).json({ message: "Invalid token" });
+    }
+
+    const user = await User.findById(payload.id)
+      .select("-password")
+      .lean()
+      .exec();
+    if (!user) {
+      return res.status(401).json({ message: "User not found" });
+    }
+
+    // attach user to request for downstream handlers
+    (req as any).user = user;
     next();
   } catch (err) {
-    next(err);
+    // token verify failures etc.
+    return res
+      .status(401)
+      .json({ message: "Not authorized", error: (err as Error).message });
   }
 };

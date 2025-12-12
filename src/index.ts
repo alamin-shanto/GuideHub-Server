@@ -9,6 +9,11 @@ const PORT = process.env.PORT || 4000;
 
 async function start() {
   try {
+    console.log(
+      "Loaded JWT secret:",
+      process.env.JWT_SECRET?.slice(0, 6) + "...."
+    );
+
     await connectDB(process.env.MONGO_URI || "");
     app.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);

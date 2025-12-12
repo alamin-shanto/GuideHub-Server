@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import helmet from "helmet";
+
 import authRoutes from "./routes/auth.routes";
 import usersRoutes from "./routes/users.routes";
 import listingsRoutes from "./routes/listings.routes";
@@ -13,19 +14,35 @@ import errorHandler from "./middleware/errorHandler";
 const app = express();
 
 app.use(helmet());
-app.use(cors({ origin: true, credentials: true }));
+
+// 🔥 Secure CORS setup
+const WHITELIST = [
+  "http://localhost:3000",
+  "https://guide-hub-client.vercel.app",
+];
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true);
+      if (WHITELIST.includes(origin)) return cb(null, true);
+      return cb(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(morgan("tiny"));
 
-// simple root endpoint for quick checks
+// root for quick check
 app.get("/", (_req, res) => {
   res.json({
     ok: true,
     service: "GuideHub API",
-    docs: "/api",
-    note: "API is up — visit /health or /api/guides/top",
+    note: "API running",
   });
 });
 
@@ -39,7 +56,7 @@ app.use("/api/payments", paymentsRoutes);
 // health
 app.get("/health", (_req, res) => res.json({ ok: true }));
 
-// error handler (should be last)
+// error handler
 app.use(errorHandler);
 
 export default app;
