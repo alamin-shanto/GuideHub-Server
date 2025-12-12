@@ -9,9 +9,12 @@ type Maybe<T> = T | null;
 
 // ENV + CONSTANTS
 const COOKIE_NAME = process.env.COOKIE_NAME || "token";
+
+// Ensure SECRET is properly cast as jwt.Secret
 const JWT_SECRET: Secret =
   (process.env.JWT_SECRET as Secret) || "dev_secret_change_me";
 
+// Token expiration (TS-safe)
 const JWT_EXPIRES_IN: SignOptions["expiresIn"] =
   (process.env.JWT_EXPIRES_IN as any) || "7d";
 
@@ -19,13 +22,15 @@ const DEFAULT_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 const REMEMBER_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // --------------------------------------------------------
-// ALWAYS SECURE COOKIE OPTIONS (Render + Vercel cross-site)
+// COOKIE OPTIONS (Render + Vercel cross-site compatible)
 // --------------------------------------------------------
 function cookieOptions(maxAge = DEFAULT_COOKIE_MAX_AGE) {
+  const isProd = process.env.NODE_ENV === "production";
+
   return {
     httpOnly: true,
-    secure: true, // cookies MUST be secure on Render
-    sameSite: "none" as const, // REQUIRED for cross-site cookies
+    secure: isProd,
+    sameSite: (isProd ? "none" : "lax") as "none" | "lax",
     maxAge,
     path: "/",
   };
@@ -43,17 +48,20 @@ function getTokenFromReq(req: Request): Maybe<string> {
   const cookieToken = (req as any).cookies?.[COOKIE_NAME];
   if (cookieToken) return cookieToken;
 
-  const auth = req.headers.authorization;
-  if (auth && auth.startsWith("Bearer ")) return auth.split(" ")[1];
+  const header = req.headers.authorization;
+  if (header && header.startsWith("Bearer ")) {
+    return header.split(" ")[1];
+  }
 
   return null;
 }
 
 // --------------------------------------------------------
 // POST /api/auth/register
+// SAVE ROLE CORRECTLY 🔥
 // --------------------------------------------------------
 export const register = asyncHandler(async (req: Request, res: Response) => {
-  const { name, email, password } = req.body || {};
+  const { name, email, password, role } = req.body || {};
 
   if (!email || !password)
     return res.status(400).json({ message: "Email & password required" });
@@ -62,7 +70,14 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   if (existing)
     return res.status(409).json({ message: "Email already registered" });
 
-  const user = new User({ name, email, password });
+  // 🔥 FIX: SAVE ROLE FROM CLIENT
+  const user = new User({
+    name,
+    email,
+    password,
+    role: role || "tourist",
+  });
+
   await user.save();
 
   const token = signToken({ id: user._id.toString() });
@@ -70,12 +85,18 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   res.cookie(COOKIE_NAME, token, cookieOptions());
 
   res.status(201).json({
-    user: { id: user._id, name: user.name, email: user.email },
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
   });
 });
 
 // --------------------------------------------------------
 // POST /api/auth/login
+// RETURNS ROLE 🔥
 // --------------------------------------------------------
 export const login = asyncHandler(async (req: Request, res: Response) => {
   const { email, password, remember } = req.body || {};
@@ -102,7 +123,12 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   res.cookie(COOKIE_NAME, token, opts);
 
   res.json({
-    user: { id: user._id, name: user.name, email: user.email },
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+    },
   });
 });
 
@@ -110,10 +136,12 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
 // POST /api/auth/logout
 // --------------------------------------------------------
 export const logout = asyncHandler(async (_req: Request, res: Response) => {
+  const isProd = process.env.NODE_ENV === "production";
+
   res.clearCookie(COOKIE_NAME, {
     httpOnly: true,
-    secure: true,
-    sameSite: "none",
+    secure: isProd,
+    sameSite: (isProd ? "none" : "lax") as "none" | "lax",
     path: "/",
   });
 
@@ -122,6 +150,7 @@ export const logout = asyncHandler(async (_req: Request, res: Response) => {
 
 // --------------------------------------------------------
 // GET /api/auth/me
+// RETURNS ROLE 🔥
 // --------------------------------------------------------
 export const me = asyncHandler(async (req: Request, res: Response) => {
   const token = getTokenFromReq(req);
