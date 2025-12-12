@@ -4,10 +4,22 @@ import bcrypt from "bcryptjs";
 import User from "../models/User.model";
 import asyncHandler from "../middleware/asyncHandler";
 
+/**
+ * Small Request type that includes `user` (set by your auth middleware).
+ * We keep it local to avoid touching global type declarations.
+ */
+type RequestWithUser = Request & { user?: any };
+
 const signToken = (id: string) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET || "dev_secret", {
-    expiresIn: process.env.JWT_EXPIRES_IN || "7d",
-  });
+  const secret: jwt.Secret =
+    (process.env.JWT_SECRET as jwt.Secret) || "dev_secret";
+
+  const options: jwt.SignOptions = {
+    expiresIn: (process.env.JWT_EXPIRES_IN ??
+      "7d") as unknown as jwt.SignOptions["expiresIn"],
+  };
+
+  return jwt.sign({ id }, secret, options);
 };
 
 export const register = asyncHandler(async (req: Request, res: Response) => {
@@ -23,12 +35,10 @@ export const register = asyncHandler(async (req: Request, res: Response) => {
   await user.save();
 
   const token = signToken(user._id.toString());
-  res
-    .status(201)
-    .json({
-      user: { id: user._id, name: user.name, email: user.email },
-      token,
-    });
+  res.status(201).json({
+    user: { id: user._id, name: user.name, email: user.email },
+    token,
+  });
 });
 
 export const login = asyncHandler(async (req: Request, res: Response) => {
@@ -49,7 +59,7 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   });
 });
 
-export const me = asyncHandler(async (req: Request, res: Response) => {
+export const me = asyncHandler(async (req: RequestWithUser, res: Response) => {
   // auth middleware attaches req.user
   res.json({ user: req.user });
 });
